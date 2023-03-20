@@ -1,14 +1,19 @@
 cmake_minimum_required (VERSION 3.0)
 project(minidbg)
-
-add_compile_options(-std=c++14)
+SET (CMAKE_C_COMPILER "/usr/bin/clang")
+SET (CMAKE_CXX_COMPILER "/usr/bin/clang++")
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 
 include_directories(ext/libelfin ext/linenoise include)
 add_executable(minidbg src/minidbg.cpp ext/linenoise/linenoise.c)
 
+add_executable(variable examples/variable.cpp)
+set_target_properties(variable
+                      PROPERTIES COMPILE_FLAGS "-g -O0")
+
 add_executable(hello examples/hello.cpp)
 set_target_properties(hello 
-                        PROPERTIES COMPILE_FLAGS "-g -O0")
+                        PROPERTIES COMPILE_FLAGS "-gdwarf-2 -O0")
 
 add_custom_target(
     libelfin
