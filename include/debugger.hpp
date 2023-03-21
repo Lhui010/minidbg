@@ -46,9 +46,13 @@ namespace minidbg {
 
         void run();
         void set_breakpoint_at_address(std::intptr_t addr);
+        void set_breakpoint_at_function(const std::string &name);
+        void set_breakpoint_at_line(const std::string& file, unsigned line);
         void dump_register();
-
-        void print_source(const std::string& file_name, unsigned line, unsigned n_line_context = 2);
+        void print_backtrace();
+        void read_variables();
+        void print_source(const std::string &file_name, unsigned line, unsigned n_line_context = 2);
+        auto lookup_symbol(const std::string &name) -> std::vector<symbol>;
 
         void single_step_instruction();
         void single_step_instruction_with_breakpoint_check();

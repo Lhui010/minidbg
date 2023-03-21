@@ -40,6 +40,23 @@ bool is_prefix(const std::string &s, const std::string &of) {
     return std::equal(s.begin(), s.end(), of.begin());
 }
 
+bool is_suffix(const std::string& s, const std::string& of) {
+    if (s.size() > of.size()) return false;
+    auto diff = of.size() - s.size();
+    return std::equal(s.begin(), s.end(), of.begin() + diff);
+}
+
+symbol_type to_symbol_type(elf::stt sym) {
+    switch (sym) {
+    case elf::stt::notype: return symbol_type::notype;
+    case elf::stt::object: return symbol_type::object;
+    case elf::stt::func: return symbol_type::func;
+    case elf::stt::section: return symbol_type::section;
+    case elf::stt::file: return symbol_type::file;
+    default: return symbol_type::notype;
+    }
+}
+
 void debugger::remove_breakpoint(std::intptr_t addr) {
     if (m_breakpoints.at(addr).is_enabled()) {
         m_breakpoints.at(addr).disable();
@@ -62,6 +79,71 @@ void debugger::step_out() {
 
     if (should_remove_breakpoint) {
         remove_breakpoint(return_address);
+    }
+}
+
+void debugger::set_breakpoint_at_function(const std::string &name) {
+    for (const auto& cu : m_dwarf.compilation_units()) {
+        for (const auto& die : cu.root()) {
+            if (die.has(dwarf::DW_AT::name) && dwarf::at_name(die) == name) {
+                auto low_pc = dwarf::at_low_pc(die);
+                auto entry = get_line_entry_from_pc(low_pc);
+                ++entry;
+                set_breakpoint_at_address(offset_dwarf_address(entry->address));
+            }
+        }
+    }
+}
+
+void debugger::set_breakpoint_at_line(const std::string &file, unsigned int line) {
+    for (const auto& cu : m_dwarf.compilation_units()) {
+        if (is_suffix(file, dwarf::at_name(cu.root()))) {
+            const auto& lt = cu.get_line_table();
+
+            for (const auto& entry : lt) {
+                if (entry.is_stmt && entry.line == line) {
+                    set_breakpoint_at_address(offset_dwarf_address(entry.address));
+                }
+            }
+        }
+    }
+}
+
+std::vector<symbol> debugger::lookup_symbol(const std::string& name) {
+    std::vector<symbol> syms;
+
+    for (auto &sec : m_elf.sections()) {
+        if (sec.get_hdr().type != elf::sht::symtab && sec.get_hdr().type != elf::sht::dynsym)
+            continue;
+
+        for (auto sym : sec.as_symtab()) {
+            if (sym.get_name() == name) {
+                auto &d = sym.get_data();
+                syms.push_back(symbol{to_symbol_type(d.type()), sym.get_name(), d.value});
+            }
+        }
+    }
+
+    return syms;
+}
+
+void debugger::print_backtrace() {
+    auto output_frame = [this, frame_number = 0] (auto&& func) mutable {
+        std::cout << "frame #" << frame_number++ << ": 0x" << offset_dwarf_address(dwarf::at_low_pc(func))
+                  << ' ' << dwarf::at_name(func) << std::endl;
+    };
+
+    auto current_func = get_function_from_pc(get_offset_pc());
+    output_frame(current_func);
+
+    auto frame_pointer = get_register_value(m_pid, reg::rbp);
+    auto return_address = read_memory(frame_pointer+8);
+
+    while (dwarf::at_name(current_func) != "main") {
+        current_func = get_function_from_pc(return_address);
+        output_frame(current_func);
+        frame_pointer = read_memory(frame_pointer);
+        return_address = read_memory(frame_pointer+8);
     }
 }
 
@@ -323,9 +405,19 @@ void debugger::handle_command(const std::string &line) {
             //todo: check wether the address is valid.
             std::string addr {args[1], 2};
             set_breakpoint_at_address(std::stol(addr, 0, 16));
+        } else if (args[1].find(':') != std::string::npos) {
+            auto file_and_line = split(args[1], ':');
+            set_breakpoint_at_line(file_and_line[0], std::stoi(file_and_line[1]));
         } else {
-            //
+            set_breakpoint_at_function(args[1]);
         }
+    } else if (is_prefix(command, "symbol")) {
+        auto syms = lookup_symbol(args[1]);
+        for (auto&& s : syms) {
+            std::cout << s.name << ' ' << to_string(s.type) << " 0x" << std::hex << s.addr << std::endl;
+        }
+    } else if (is_prefix(command, "backtrace")) {
+        print_backtrace();
     } else if (is_prefix(command, "register")) {
         if (is_prefix(args[1], "dump")) {
             dump_register();
