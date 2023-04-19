@@ -7,6 +7,10 @@ set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 include_directories(ext/libelfin ext/linenoise include)
 add_executable(minidbg src/minidbg.cpp ext/linenoise/linenoise.c)
 
+add_executable(minidbg-dbg src/minidbg.cpp ext/linenoise/linenoise.c)
+set_target_properties(minidbg-dbg
+                      PROPERTIES COMPILE_FLAGS "-g -O0")
+
 add_executable(variable examples/variable.cpp)
 set_target_properties(variable
                       PROPERTIES COMPILE_FLAGS "-g -O0")
@@ -26,6 +30,10 @@ add_custom_target(
 )
 
 target_link_libraries(minidbg
+                      ${PROJECT_SOURCE_DIR}/ext/libelfin/dwarf/libdwarf++.so
+                      ${PROJECT_SOURCE_DIR}/ext/libelfin/elf/libelf++.so)
+
+target_link_libraries(minidbg-dbg
                       ${PROJECT_SOURCE_DIR}/ext/libelfin/dwarf/libdwarf++.so
                       ${PROJECT_SOURCE_DIR}/ext/libelfin/elf/libelf++.so)
 add_dependencies(minidbg libelfin)
